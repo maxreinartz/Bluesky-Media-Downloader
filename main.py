@@ -64,6 +64,7 @@ def dowload_media(posts):
   """
 
   total_media = 0
+  new_media = 0
   dowloaded_media = 0
 
   for post in posts:
@@ -82,16 +83,17 @@ def dowload_media(posts):
               f.write(chunk)
           print(f"Downloaded {filename} | {dowloaded_media}/{total_media}")
           dowloaded_media += 1
+          new_media += 1
         else:
           print(f"Failed to download {img_url}")
           # Save the failed url to a file
           with open("failed_urls.txt", "a") as f:
             f.write(f"{img_url}\n")
       else:
-        print(f"{filepath} already exists, skipping download. Url: {img_url}")
+        print(f"{filepath} already exists, skipping download")
         dowloaded_media += 1
   
-  return dowloaded_media, total_media
+  return dowloaded_media, new_media, total_media
 
 def main():
   print("========================================")
@@ -108,8 +110,8 @@ def main():
   posts = [post for post in posts if post.post.record.embed and getattr(post.post.record.embed, "images", None)]
   print(f"Found {len(posts)} post(s) with media")
   print("Beginning to download media")
-  downloaded, total = dowload_media(posts)
-  print(f"Downloaded {downloaded}/{total} media files")
+  downloaded, new, total = dowload_media(posts)
+  print(f"Downloaded {downloaded}/{total} media files, {new} newly downloaded")
 
 if __name__ == '__main__':
   """
