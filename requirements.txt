@@ -1,0 +1,3 @@
+atproto
+python-dotenv
+Requests
