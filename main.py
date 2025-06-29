@@ -7,20 +7,21 @@ from atproto_identity.resolver import IdResolver
 
 load_dotenv()
 
-version = "1.2"
+version = "1.3"
 account = ""
 user_did = ""
+user_feed = ""
 max_posts = 25
-posts_likes = ""
+posts_likes_feeds = ""
 
-def fetch_posts(max_posts, posts_likes, client):
+def fetch_posts(max_posts, posts_likes_feeds, client):
   """
   Fetches posts from the given account and downloads media from them.
 
   Args:
     account (str): The account to fetch posts from.
     max_posts (int): The maximum number of posts to fetch.
-    posts_likes (str): The type of feed to fetch, either 'likes' or 'posts'.
+    posts_likes_feeds (str): The type of feed to fetch, either 'likes' or 'posts'.
   """
   # print(f"{account}, {user_did}")
   # Get the feed of the account (posts)
@@ -37,10 +38,12 @@ def fetch_posts(max_posts, posts_likes, client):
       else:
         limit = 100
       
-      if posts_likes == "posts":
+      if posts_likes_feeds == "posts":
         response = client.get_author_feed(user_did, limit=limit, cursor=cursor)
-      elif posts_likes == "likes":
+      elif posts_likes_feeds == "likes":
         response = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': limit, 'cursor': cursor})
+      elif posts_likes_feeds == "feeds":
+        response = client.app.bsky.feed.get_feed({'feed': user_feed, 'limit': limit, 'cursor': cursor})
 
       feed.extend(response.feed)
       cursor = response.cursor
@@ -49,10 +52,12 @@ def fetch_posts(max_posts, posts_likes, client):
         print("No more posts to fetch.")
         break
   else:
-    if posts_likes == "posts":
+    if posts_likes_feeds == "posts":
       posts = client.get_author_feed(user_did, limit=max_posts)
-    elif posts_likes == "likes":
+    elif posts_likes_feeds == "likes":
       posts = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': max_posts})
+    elif posts_likes_feeds == "feeds":
+      posts = client.app.bsky.feed.get_feed({'feed': user_feed, 'limit': max_posts})
     
     feed = posts.feed
 
@@ -78,9 +83,10 @@ def dowload_media(posts):
       total_media += 1
       img_url = view_image.fullsize
       filename = f"{post.post.record.created_at.replace(':', '-')}_{post.post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{img_url.split('@')[-1]}"
-      filepath = os.path.join(account, filename)
-      if not os.path.exists(account):
-        os.makedirs(account)
+      folder_name = f"{account}_{posts_likes_feeds}"
+      filepath = os.path.join(folder_name, filename)
+      if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
       if not os.path.exists(filepath):
         response = requests.get(img_url, stream=True)
         if response.status_code == 200:
@@ -102,7 +108,7 @@ def dowload_media(posts):
   return dowloaded_media, new_media, total_media
 
 def main():
-  global account, max_posts, posts_likes, user_did
+  global account, max_posts, posts_likes_feeds, user_did, user_feed
 
   print("========================================")
   print(f"Bluesky Media Downloader [{version}]")
@@ -121,15 +127,39 @@ def main():
     sys.exit(1)
   account_string = client.get_profile(user_did).display_name + f" [{account}]"
 
-  if(max_posts == -1):
-    max_posts = client.get_profile(user_did).posts_count
-    print(f"Fetching all posts from the account ({max_posts} posts)")
+  if(posts_likes_feeds == "feeds"):
+    feeds = client.app.bsky.feed.get_actor_feeds({'actor': user_did})
+    if not feeds.feeds:
+      print(f"No feeds found for {account_string}.")
+      sys.exit(1)
+    print(f"Found {len(feeds.feeds)} feeds for {account_string}")
+    print("Available feeds:")
+    for i, feed in enumerate(feeds.feeds):
+      print(f"{i+1}. {feed.display_name} - {feed.description}")
+    feed_choice = input("Enter the number of the feed you want to download media from: ")
+    try:
+      feed_choice = int(feed_choice) - 1
+      if feed_choice < 0 or feed_choice >= len(feeds.feeds):
+        print("Invalid feed choice.")
+        sys.exit(1)
+      user_feed = feeds.feeds[feed_choice].uri
+      print(f"Selected feed {feeds.feeds[feed_choice].display_name}")
+    except ValueError:
+      print("Invalid input. Please enter a number.")
+      sys.exit(1)
 
-  print(f"Fetching {max_posts} post(s) from {account_string}'s {posts_likes}")
-  
-  posts = fetch_posts(max_posts, posts_likes, client)
+  if(max_posts == -1):
+    if(posts_likes_feeds == "feeds"):
+      print(f"All is not supported for feeds. Defaulting to 100 posts.")
+      max_posts = 100
+    else:
+      max_posts = client.get_profile(user_did).posts_count
+      print(f"Fetching all posts from the account ({max_posts} posts)")
+
+  print(f"Fetching {max_posts} post(s) from {account_string}'s {posts_likes_feeds}")
+  posts = fetch_posts(max_posts, posts_likes_feeds, client)
   # print(posts)
-  print(f"Fetched {len(posts)} post(s) from {account_string}'s {posts_likes}")
+  print(f"Fetched {len(posts)} post(s) from {account_string}'s {posts_likes_feeds}")
   print("Removing posts without media...")
   # Filter out posts without media
   posts = [post for post in posts if post.post.record.embed and getattr(post.post.record.embed, "images", None)]
@@ -143,17 +173,17 @@ if __name__ == '__main__':
   Args:
     account (str): The account to fetch posts from.
     max_posts (int | str): The maximum number of posts to fetch.
-    posts_likes (str): The type of feed to fetch, either 'likes' or 'posts'.
+    posts_likes_feeds (str): The type of feed to fetch, either 'likes', 'posts', or 'feeds'.
   """
   # Get arguments from command line
   if len(sys.argv) <= 3:
     print("Not enough arguments.")
-    print("Usage: python main.py <account> [max_posts] [posts_likes]")
+    print("Usage: python main.py <account> [max_posts] [posts_likes_feeds]")
     sys.exit(1)
 
   if len(sys.argv) > 4:
     print("Too many arguments.")
-    print("Usage: python main.py <account> [max_posts] [posts_likes]")
+    print("Usage: python main.py <account> [max_posts] [posts_likes_feeds]")
     sys.exit(1)
 
   account = sys.argv[1]
@@ -168,10 +198,10 @@ if __name__ == '__main__':
       sys.exit(1)
 
   if(len(sys.argv) > 3):
-    posts_likes = sys.argv[3].lower()
-    if posts_likes not in ["likes", "posts"]:
-      print("Feed type must be either 'likes' or 'posts'.")
-      print("Usage: python main.py <account> [max_posts] [posts_likes]")
+    posts_likes_feeds = sys.argv[3].lower()
+    if posts_likes_feeds not in ["likes", "posts", "feeds"]:
+      print("Feed type must be either 'likes', 'posts', or 'feeds'.")
+      print("Usage: python main.py <account> [max_posts] [posts_likes_feeds]")
       sys.exit(1)
 
   main();

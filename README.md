@@ -1,5 +1,5 @@
 # Bluesky Media Downloader
-Download media from Bluesky with this simple CLI tool.
+Download media from Bluesky with this simple CLI tool. Media can be downloaded from users' posts, likes, and feeds.
 
 ## Instructions
 
@@ -14,11 +14,13 @@ BSKY_APP_TOKEN="abcd-efgh-ijkl-mnop"
 ```
 2. Run the command
 ```
-python main.py <account (str)> <max_posts (int | str)> <posts_likes (str)>
+python main.py <account (str)> <max_posts (int | str)> <posts_likes_feeds (str)>
 ```
 ```
-# Example
-python main.py frieren.websunday.net 10 posts
+# Examples
+python main.py frieren.websunday.net all posts
+python main.py frieren.websunday.net 25 likes
+python main.py frieren.websunday.net 10 feeds # all is not supported for feeds
 ```
 
 ## LICENSE
