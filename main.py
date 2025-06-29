@@ -7,11 +7,13 @@ from atproto_identity.resolver import IdResolver
 
 load_dotenv()
 
-account = "";
-max_posts = 25;
+version = "1.2"
+account = ""
+user_did = ""
+max_posts = 25
 posts_likes = ""
 
-def fetch_posts(account, max_posts, posts_likes):
+def fetch_posts(max_posts, posts_likes, client):
   """
   Fetches posts from the given account and downloads media from them.
 
@@ -20,12 +22,6 @@ def fetch_posts(account, max_posts, posts_likes):
     max_posts (int): The maximum number of posts to fetch.
     posts_likes (str): The type of feed to fetch, either 'likes' or 'posts'.
   """
-  client = Client()
-  # Login via app token from .env
-  print(f"Logging in as {os.getenv('BSKY_USERNAME')}")
-  client.login(os.getenv('BSKY_USERNAME'), os.getenv('BSKY_APP_TOKEN'))
-  # Resolve the account to a DID
-  user_did = IdResolver().handle.resolve(account)
   # print(f"{account}, {user_did}")
   # Get the feed of the account (posts)
   feed = []
@@ -45,9 +41,7 @@ def fetch_posts(account, max_posts, posts_likes):
         response = client.get_author_feed(user_did, limit=limit, cursor=cursor)
       elif posts_likes == "likes":
         response = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': limit, 'cursor': cursor})
-      else:
-        print("Invalid feed type. Must be either 'likes' or 'posts'.")
-        sys.exit(1)
+
       feed.extend(response.feed)
       cursor = response.cursor
       fetched_posts += len(response.feed)
@@ -59,9 +53,7 @@ def fetch_posts(account, max_posts, posts_likes):
       posts = client.get_author_feed(user_did, limit=max_posts)
     elif posts_likes == "likes":
       posts = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': max_posts})
-    else:
-      print("Invalid feed type. Must be either 'likes' or 'posts'.")
-      sys.exit(1)
+    
     feed = posts.feed
 
   return feed
@@ -110,15 +102,34 @@ def dowload_media(posts):
   return dowloaded_media, new_media, total_media
 
 def main():
+  global account, max_posts, posts_likes, user_did
+
   print("========================================")
-  print("Bluesky Media Downloader")
+  print(f"Bluesky Media Downloader [{version}]")
   print("By @maxreinartz.dev")
   print("========================================")
-  print(f"Fetching {max_posts} post(s) from {account}'s {posts_likes}")
+
+  # Create a client instance
+  client = Client()
+  # Login via app token from .env
+  print(f"Logging in as {os.getenv('BSKY_USERNAME')}")
+  client.login(os.getenv('BSKY_USERNAME'), os.getenv('BSKY_APP_TOKEN'))
+  # Resolve the account to a DID
+  user_did = IdResolver().handle.resolve(account)
+  if not user_did:
+    print(f"Could not resolve account {account} to a DID. Please check the account name.")
+    sys.exit(1)
+  account_string = client.get_profile(user_did).display_name + f" [{account}]"
+
+  if(max_posts == -1):
+    max_posts = client.get_profile(user_did).posts_count
+    print(f"Fetching all posts from the account ({max_posts} posts)")
+
+  print(f"Fetching {max_posts} post(s) from {account_string}'s {posts_likes}")
   
-  posts = fetch_posts(account, max_posts, posts_likes)
+  posts = fetch_posts(max_posts, posts_likes, client)
   # print(posts)
-  print(f"Fetched {len(posts)} post(s) from {account}")
+  print(f"Fetched {len(posts)} post(s) from {account_string}'s {posts_likes}")
   print("Removing posts without media...")
   # Filter out posts without media
   posts = [post for post in posts if post.post.record.embed and getattr(post.post.record.embed, "images", None)]
@@ -131,7 +142,7 @@ if __name__ == '__main__':
   """
   Args:
     account (str): The account to fetch posts from.
-    max_posts (int): The maximum number of posts to fetch.
+    max_posts (int | str): The maximum number of posts to fetch.
     posts_likes (str): The type of feed to fetch, either 'likes' or 'posts'.
   """
   # Get arguments from command line
@@ -146,12 +157,15 @@ if __name__ == '__main__':
     sys.exit(1)
 
   account = sys.argv[1]
-  if(sys.argv[2].isnumeric()):
+  if(sys.argv[2].isnumeric() and int(sys.argv[2]) > 0):
     max_posts = int(sys.argv[2])
   else:
-    print("Max posts must be a number.")
-    print("Usage: python main.py <account> [max_posts]")
-    sys.exit(1)
+    if(sys.argv[2].lower() == "all"):
+      max_posts = -1
+    else:
+      print("Max posts must be a positive number or 'all'.")
+      print("Usage: python main.py <account> [max_posts]")
+      sys.exit(1)
 
   if(len(sys.argv) > 3):
     posts_likes = sys.argv[3].lower()

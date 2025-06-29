@@ -1,11 +1,11 @@
 # Bluesky Media Downloader
-Download images from Bluesky with this simple cli tool.
+Download media from Bluesky with this simple CLI tool.
 
 ## Instructions
 
 1. Make an .env file containing the following details
-- BSKY_USERNAME, your bluesky username
-- BSKY_APP_TOKEN, an app token for said account
+- BSKY_USERNAME: Your Bluesky account's username
+- BSKY_APP_TOKEN: An app token for the account. Get an app token by going to Settings > Privacy and Security > App Passwords
 
   Example:
 ```
@@ -14,7 +14,7 @@ BSKY_APP_TOKEN="abcd-efgh-ijkl-mnop"
 ```
 2. Run the command
 ```
-python main.py <account (str)> <max_posts (int)> <posts_likes (str)>
+python main.py <account (str)> <max_posts (int | str)> <posts_likes (str)>
 ```
 ```
 # Example
