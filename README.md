@@ -14,7 +14,11 @@ BSKY_APP_TOKEN="abcd-efgh-ijkl-mnop"
 ```
 2. Run the command
 ```
-python main.py <account (str)> <max_posts (int)>
+python main.py <account (str)> <max_posts (int)> <posts_likes (str)>
+```
+```
+# Example
+python main.py frieren.websunday.net 10 posts
 ```
 
 ## LICENSE

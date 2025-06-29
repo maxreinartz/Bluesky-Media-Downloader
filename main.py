@@ -9,14 +9,16 @@ load_dotenv()
 
 account = "";
 max_posts = 25;
+posts_likes = ""
 
-def fetch_posts(account, max_posts):
+def fetch_posts(account, max_posts, posts_likes):
   """
   Fetches posts from the given account and downloads media from them.
 
   Args:
     account (str): The account to fetch posts from.
     max_posts (int): The maximum number of posts to fetch.
+    posts_likes (str): The type of feed to fetch, either 'likes' or 'posts'.
   """
   client = Client()
   # Login via app token from .env
@@ -39,7 +41,13 @@ def fetch_posts(account, max_posts):
       else:
         limit = 100
       
-      response = client.get_author_feed(user_did, limit=limit, cursor=cursor)
+      if posts_likes == "posts":
+        response = client.get_author_feed(user_did, limit=limit, cursor=cursor)
+      elif posts_likes == "likes":
+        response = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': limit, 'cursor': cursor})
+      else:
+        print("Invalid feed type. Must be either 'likes' or 'posts'.")
+        sys.exit(1)
       feed.extend(response.feed)
       cursor = response.cursor
       fetched_posts += len(response.feed)
@@ -47,7 +55,13 @@ def fetch_posts(account, max_posts):
         print("No more posts to fetch.")
         break
   else:
-    posts = client.get_author_feed(user_did, limit=max_posts)
+    if posts_likes == "posts":
+      posts = client.get_author_feed(user_did, limit=max_posts)
+    elif posts_likes == "likes":
+      posts = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': max_posts})
+    else:
+      print("Invalid feed type. Must be either 'likes' or 'posts'.")
+      sys.exit(1)
     feed = posts.feed
 
   return feed
@@ -100,9 +114,9 @@ def main():
   print("Bluesky Media Downloader")
   print("By @maxreinartz.dev")
   print("========================================")
-  print(f"Fetching {max_posts} post(s) from {account}")
+  print(f"Fetching {max_posts} post(s) from {account}'s {posts_likes}")
   
-  posts = fetch_posts(account, max_posts)
+  posts = fetch_posts(account, max_posts, posts_likes)
   # print(posts)
   print(f"Fetched {len(posts)} post(s) from {account}")
   print("Removing posts without media...")
@@ -118,11 +132,17 @@ if __name__ == '__main__':
   Args:
     account (str): The account to fetch posts from.
     max_posts (int): The maximum number of posts to fetch.
+    posts_likes (str): The type of feed to fetch, either 'likes' or 'posts'.
   """
   # Get arguments from command line
-  if len(sys.argv) <= 2:
+  if len(sys.argv) <= 3:
     print("Not enough arguments.")
-    print("Usage: python main.py <account> [max_posts]")
+    print("Usage: python main.py <account> [max_posts] [posts_likes]")
+    sys.exit(1)
+
+  if len(sys.argv) > 4:
+    print("Too many arguments.")
+    print("Usage: python main.py <account> [max_posts] [posts_likes]")
     sys.exit(1)
 
   account = sys.argv[1]
@@ -132,5 +152,12 @@ if __name__ == '__main__':
     print("Max posts must be a number.")
     print("Usage: python main.py <account> [max_posts]")
     sys.exit(1)
+
+  if(len(sys.argv) > 3):
+    posts_likes = sys.argv[3].lower()
+    if posts_likes not in ["likes", "posts"]:
+      print("Feed type must be either 'likes' or 'posts'.")
+      print("Usage: python main.py <account> [max_posts] [posts_likes]")
+      sys.exit(1)
 
   main();
