@@ -46,10 +46,15 @@ def fetch_posts(max_posts, posts_likes_feeds, client):
         response = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': limit, 'cursor': cursor})
       elif posts_likes_feeds == "feeds":
         response = client.app.bsky.feed.get_feed({'feed': user_feed, 'limit': limit, 'cursor': cursor})
+      elif posts_likes_feeds == "hashtag":
+        response = client.app.bsky.feed.search_posts({'q': f"#{account}", 'limit': limit, 'cursor': cursor})
+        feed.extend(response.posts)
+        fetched_posts += len(response.posts)
 
-      feed.extend(response.feed)
+      if(not posts_likes_feeds == "hashtag"):
+        feed.extend(response.feed)
+        fetched_posts += len(response.feed)
       cursor = response.cursor
-      fetched_posts += len(response.feed)
       sys.stdout.write(f"\r{' ' * 80}\rFetched {fetched_posts} posts so far...")
       sys.stdout.flush()
       if(not cursor or fetched_posts == last_fetched):
@@ -62,6 +67,9 @@ def fetch_posts(max_posts, posts_likes_feeds, client):
       posts = client.app.bsky.feed.get_actor_likes({'actor': user_did, 'limit': max_posts})
     elif posts_likes_feeds == "feeds":
       posts = client.app.bsky.feed.get_feed({'feed': user_feed, 'limit': max_posts})
+    elif posts_likes_feeds == "hashtag":
+      posts = client.app.bsky.feed.search_posts({'q': f"#{account}", 'limit': max_posts})
+      return posts.posts
     
     feed = posts.feed
 
@@ -91,11 +99,12 @@ async def dowload_media(posts):
 
     for post in posts:
       # Check if the post has an embed with images or video
-      if hasattr(post.post.embed, 'images') and post.post.embed.images:
-        for view_image in post.post.embed.images:
+      _post = post.post if posts_likes_feeds != "hashtag" else post
+      if hasattr(_post.embed, 'images') and _post.embed.images:
+        for view_image in _post.embed.images:
           total_media += 1
           img_url = view_image.fullsize
-          filename = f"{post.post.record.created_at.replace(':', '-')}_{post.post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{img_url.split('@')[-1]}"
+          filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{img_url.split('@')[-1]}"
           folder_name = f"{account}_{posts_likes_feeds}"
           filepath = os.path.join(folder_name, filename)
           if not os.path.exists(folder_name):
@@ -108,10 +117,10 @@ async def dowload_media(posts):
             sys.stdout.write(f"\r{' ' * 80}\r{filename} already exists, skipping download")
             sys.stdout.flush()
             dowloaded_media += 1
-      elif hasattr(post.post.embed, 'playlist') and post.post.embed.playlist:
+      elif hasattr(_post.embed, 'playlist') and _post.embed.playlist:
         total_media += 1
-        video_url = post.post.embed.playlist
-        filename = f"{post.post.record.created_at.replace(':', '-')}_{post.post.uri.split('/')[-1]}.m3u8"
+        video_url = _post.embed.playlist
+        filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}.m3u8"
         folder_name = f"{account}_{posts_likes_feeds}"
         filepath = os.path.join(folder_name, filename)
         if not os.path.exists(folder_name):
@@ -172,11 +181,14 @@ def main():
   print(f"Logging in as {os.getenv('BSKY_USERNAME')}")
   client.login(os.getenv('BSKY_USERNAME'), os.getenv('BSKY_APP_TOKEN'))
   # Resolve the account to a DID
-  user_did = IdResolver().handle.resolve(account)
-  if not user_did:
-    print(f"Could not resolve account {account} to a DID. Please check the account name.")
-    sys.exit(1)
-  account_string = client.get_profile(user_did).display_name + f" [{account}]"
+  if(not posts_likes_feeds == "hashtag"):
+    user_did = IdResolver().handle.resolve(account)
+    if not user_did:
+      print(f"Could not resolve account {account} to a DID. Please check the account name.")
+      sys.exit(1)
+    account_string = client.get_profile(user_did).display_name + f" [{account}]"
+  else:
+    account_string = f"the #{account}"
 
   if(posts_likes_feeds == "feeds"):
     feeds = client.app.bsky.feed.get_actor_feeds({'actor': user_did})
@@ -201,24 +213,27 @@ def main():
       sys.exit(1)
 
   if(max_posts == -1):
-    if(posts_likes_feeds == "feeds" or posts_likes_feeds == "likes"):
-      print(f"All is not supported for feeds or likes. Defaulting to 100 posts.")
-      max_posts = 100
-    else:
+    if(posts_likes_feeds == "posts"):
       max_posts = client.get_profile(user_did).posts_count
       print(f"Fetching all posts from the account ({max_posts} posts)")
+    else:
+      print(f"All is not supported for feeds, likes, or hashtag. Defaulting to 100 posts.")
+      max_posts = 100
 
   print(f"Fetching {max_posts} post(s) from {account_string}'s {posts_likes_feeds}")
   posts = fetch_posts(max_posts, posts_likes_feeds, client)
   # print(posts)
   print(f"Fetched {len(posts)} post(s) from {account_string}'s {posts_likes_feeds}")
   print("Removing posts without media...")
+  if(posts_likes_feeds == "hashtag"):
+    posts = [post for post in posts if post.record.embed and (getattr(post.record.embed, "images", None) or getattr(post.record.embed, "video", None))]
+  else:
+    posts = [post for post in posts if post.post.record.embed and (getattr(post.post.record.embed, "images", None) or getattr(post.post.record.embed, "video", None))]
   if(posts_likes_feeds == "feeds"):
     invalid_chars = '<>:"/\\|?*'
     safe_feed_display_name = ''.join(c if c not in invalid_chars else '_' for c in feed_display_name)
     posts_likes_feeds = f"feeds_{safe_feed_display_name.replace(' ', '_')}"
   # Filter out posts without media
-  posts = [post for post in posts if post.post.record.embed and (getattr(post.post.record.embed, "images", None) or getattr(post.post.record.embed, "video", None))]
   print(f"Found {len(posts)} post(s) with media")
   print("Beginning to download media")
   downloaded, new, total = asyncio.run(dowload_media(posts))
@@ -253,9 +268,9 @@ def main():
 if __name__ == '__main__':
   """
   Args:
-    account (str): The account to fetch posts from.
+    account (str): The account to fetch posts from. In case of hastags, enter the hashtag without the # symbol, not the account name.
     max_posts (int | str): The maximum number of posts to fetch.
-    posts_likes_feeds (str): The type of feed to fetch, either 'likes', 'posts', or 'feeds'.
+    posts_likes_feeds (str): The type of feed to fetch, either 'likes', 'posts', 'feeds', or 'hastag'.
   """
   # Get arguments from command line
   if len(sys.argv) <= 3:
@@ -276,14 +291,14 @@ if __name__ == '__main__':
       max_posts = -1
     else:
       print("Max posts must be a positive number or 'all'.")
-      print("Usage: python main.py <account> [max_posts]")
+      print("Usage: python main.py <account | [hashtag]> [max_posts]")
       sys.exit(1)
 
   if(len(sys.argv) > 3):
     posts_likes_feeds = sys.argv[3].lower()
-    if posts_likes_feeds not in ["likes", "posts", "feeds"]:
-      print("Feed type must be either 'likes', 'posts', or 'feeds'.")
-      print("Usage: python main.py <account> [max_posts] [posts_likes_feeds]")
+    if posts_likes_feeds not in ["likes", "posts", "feeds", "hashtag"]:
+      print("Feed type must be either 'likes', 'posts', 'feeds', or 'hastag'.")
+      print("Usage: python main.py <account | [hashtag]> [max_posts] [posts_likes_feeds]")
       sys.exit(1)
 
   main();

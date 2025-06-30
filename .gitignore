@@ -1,5 +1,5 @@
-frieren.websunday.net*
-capcomart.bsky.social*
-maxreinartz.dev*
-*.bsky.social*
+*posts
+*likes
+*feeds*
+*hashtag
 .env
