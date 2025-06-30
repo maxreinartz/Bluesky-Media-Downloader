@@ -1,13 +1,13 @@
 """Fetches posts from Bluesky and downloads media from them."""
 
-import sys, os, requests
+import sys, os, asyncio, aiohttp, time
 from dotenv import load_dotenv
 from atproto import Client
 from atproto_identity.resolver import IdResolver
 
 load_dotenv()
 
-version = "1.3"
+version = "1.4"
 account = ""
 user_did = ""
 user_feed = ""
@@ -63,7 +63,7 @@ def fetch_posts(max_posts, posts_likes_feeds, client):
 
   return feed
 
-def dowload_media(posts):
+async def dowload_media(posts):
   """
   Downloads media from the given posts.
 
@@ -74,41 +74,59 @@ def dowload_media(posts):
     Total number of media downloaded.
   """
 
-  total_media = 0
-  new_media = 0
-  dowloaded_media = 0
+  async with aiohttp.ClientSession() as session:
+    tasks = []
+    total_media = 0
+    new_media = 0
+    dowloaded_media = 0
 
-  for post in posts:
-    for view_image in post.post.embed.images:
-      total_media += 1
-      img_url = view_image.fullsize
-      filename = f"{post.post.record.created_at.replace(':', '-')}_{post.post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{img_url.split('@')[-1]}"
-      folder_name = f"{account}_{posts_likes_feeds}"
-      filepath = os.path.join(folder_name, filename)
-      if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
-      if not os.path.exists(filepath):
-        response = requests.get(img_url, stream=True)
-        if response.status_code == 200:
-          with open(filepath, 'wb') as f:
-            for chunk in response.iter_content(1024):
-              f.write(chunk)
-          print(f"Downloaded {filename} | {dowloaded_media}/{total_media}")
-          dowloaded_media += 1
-          new_media += 1
+    for post in posts:
+      for view_image in post.post.embed.images:
+        total_media += 1
+        img_url = view_image.fullsize
+        filename = f"{post.post.record.created_at.replace(':', '-')}_{post.post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{img_url.split('@')[-1]}"
+        folder_name = f"{account}_{posts_likes_feeds}"
+        filepath = os.path.join(folder_name, filename)
+        if not os.path.exists(folder_name):
+          os.makedirs(folder_name)
+        if not os.path.exists(filepath):
+          tasks.append(download_image(session, img_url, filepath, filename))
+          print(f"Scheduled {filename} | {dowloaded_media}/{total_media}")
         else:
-          print(f"Failed to download {img_url}")
-          # Save the failed url to a file
-          with open("failed_urls.txt", "a") as f:
-            f.write(f"{img_url}\n")
-      else:
-        print(f"{filepath} already exists, skipping download")
+          print(f"{filename} already exists, skipping download")
+          dowloaded_media += 1
+
+    results = await asyncio.gather(*tasks)
+    for result in results:
+      if(result == 0):
         dowloaded_media += 1
+        new_media += 1
   
   return dowloaded_media, new_media, total_media
 
+async def download_image(session, url, filepath, filename):
+  """
+  Downloads an image from the given URL and saves it to the specified filepath.
+
+  Args:
+    session (aiohttp.ClientSession): The aiohttp session to use for the request.
+    url (str): The URL of the image to download.
+    filepath (str): The path where the image should be saved.
+  """
+  async with session.get(url) as response:
+    with open(filepath, 'wb') as f:
+      if response.status != 200:
+        print(f"Failed to download {url}: {response.status}")
+        return None
+      content = await response.read()
+      f.write(content)
+      print(f"Downloaded {filename}")
+      return 0
+
 def main():
   global account, max_posts, posts_likes_feeds, user_did, user_feed
+
+  start_time = time.time()
 
   print("========================================")
   print(f"Bluesky Media Downloader [{version}]")
@@ -165,8 +183,9 @@ def main():
   posts = [post for post in posts if post.post.record.embed and getattr(post.post.record.embed, "images", None)]
   print(f"Found {len(posts)} post(s) with media")
   print("Beginning to download media")
-  downloaded, new, total = dowload_media(posts)
-  print(f"Downloaded {downloaded}/{total} media files, {new} newly downloaded")
+  downloaded, new, total = asyncio.run(dowload_media(posts))
+  end_time = time.time()
+  print(f"Downloaded {downloaded}/{total} media files, {new} newly downloaded. Took {end_time - start_time:.2f} seconds")
 
 if __name__ == '__main__':
   """

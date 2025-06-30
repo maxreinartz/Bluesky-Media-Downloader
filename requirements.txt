@@ -1,3 +1,5 @@
 atproto
 python-dotenv
-Requests
+requests
+asyncio
+aiohttp
