@@ -7,7 +7,7 @@ from atproto_identity.resolver import IdResolver
 
 load_dotenv()
 
-version = "1.5"
+version = "1.6"
 account = ""
 user_did = ""
 user_feed = ""
@@ -31,6 +31,7 @@ def fetch_posts(max_posts, posts_likes_feeds, client):
     cursor = None
     fetched_posts = 0
     while True:
+      last_fetched = fetched_posts
       # Check if fetched_posts is within 100 of max_posts, if so, set limit to max_posts - fetched_posts
       if max_posts - fetched_posts <= 100:
         limit = max_posts - fetched_posts
@@ -49,8 +50,10 @@ def fetch_posts(max_posts, posts_likes_feeds, client):
       feed.extend(response.feed)
       cursor = response.cursor
       fetched_posts += len(response.feed)
-      if not cursor:
-        print("No more posts to fetch.")
+      sys.stdout.write(f"\r{' ' * 80}\rFetched {fetched_posts} posts so far...")
+      sys.stdout.flush()
+      if(not cursor or fetched_posts == last_fetched):
+        print("\nNo more posts to fetch.")
         break
   else:
     if posts_likes_feeds == "posts":
@@ -191,14 +194,15 @@ def main():
         print("Invalid feed choice.")
         sys.exit(1)
       user_feed = feeds.feeds[feed_choice].uri
-      print(f"Selected feed {feeds.feeds[feed_choice].display_name}")
+      feed_display_name = feeds.feeds[feed_choice].display_name
+      print(f"Selected feed {feed_display_name}")
     except ValueError:
       print("Invalid input. Please enter a number.")
       sys.exit(1)
 
   if(max_posts == -1):
-    if(posts_likes_feeds == "feeds"):
-      print(f"All is not supported for feeds. Defaulting to 100 posts.")
+    if(posts_likes_feeds == "feeds" or posts_likes_feeds == "likes"):
+      print(f"All is not supported for feeds or likes. Defaulting to 100 posts.")
       max_posts = 100
     else:
       max_posts = client.get_profile(user_did).posts_count
@@ -209,6 +213,10 @@ def main():
   # print(posts)
   print(f"Fetched {len(posts)} post(s) from {account_string}'s {posts_likes_feeds}")
   print("Removing posts without media...")
+  if(posts_likes_feeds == "feeds"):
+    invalid_chars = '<>:"/\\|?*'
+    safe_feed_display_name = ''.join(c if c not in invalid_chars else '_' for c in feed_display_name)
+    posts_likes_feeds = f"feeds_{safe_feed_display_name.replace(' ', '_')}"
   # Filter out posts without media
   posts = [post for post in posts if post.post.record.embed and (getattr(post.post.record.embed, "images", None) or getattr(post.post.record.embed, "video", None))]
   print(f"Found {len(posts)} post(s) with media")
@@ -239,10 +247,8 @@ def main():
               print(f"Converting {full_url} to {mp4_filename}")
               ffmpeg.input(full_url).output(mp4_filename, c='copy').run()
           else:
-            print(f"No valid lines found in {filepath}. Skipping conversion.")
-  else:
-    print("No m3u8 files downloaded.")
-
+            print(f"No valid lines found in {filepath}. Skipping conversion")
+      print("Completed!")
 
 if __name__ == '__main__':
   """

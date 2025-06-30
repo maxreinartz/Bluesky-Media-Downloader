@@ -19,7 +19,7 @@ python main.py <account (str)> <max_posts (int | str)> <posts_likes_feeds (str)>
 ```
 # Examples
 python main.py frieren.websunday.net all posts
-python main.py frieren.websunday.net 25 likes
+python main.py frieren.websunday.net 25 likes # all is not supported for likes
 python main.py frieren.websunday.net 10 feeds # all is not supported for feeds
 ```
 
