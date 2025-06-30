@@ -1,5 +1,5 @@
 # Bluesky Media Downloader
-Download media from Bluesky with this simple CLI tool. Media can be downloaded from users' posts, likes, and feeds.
+Download media (images and videos) from Bluesky with this simple CLI tool. Media can be downloaded from users' posts, likes, and feeds. Uses ffmpeg to convert .m3u8 to .mp4.
 
 ## Instructions
 
