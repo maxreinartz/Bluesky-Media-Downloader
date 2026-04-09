@@ -7,7 +7,7 @@ from atproto_identity.resolver import IdResolver
 
 load_dotenv()
 
-version = "1.7"
+version = "1.8"
 account = ""
 user_did = ""
 user_feed = ""
@@ -24,6 +24,7 @@ def fetch_posts(max_posts, posts_likes_feeds, client):
     max_posts (int): The maximum number of posts to fetch.
     posts_likes_feeds (str): The type of feed to fetch, either 'likes' or 'posts'.
   """
+
   # print(f"{account}, {user_did}")
   # Get the feed of the account (posts)
   feed = []
@@ -105,46 +106,29 @@ async def dowload_media(posts):
           total_media += 1
           img_url = view_image.fullsize
 
-          # Fetch image from url and check for content type to determine file extension
-          async with session.get(img_url) as response:
-            if response.status != 200:
-              print(f"Failed to fetch {img_url}: {response.status}")
-              continue
-            content_type = response.headers.get('Content-Type', '')
-            if 'image' not in content_type:
-              print(f"URL {img_url} does not point to an image, skipping.")
-              continue
-            file_extension = content_type.split('/')[-1].split(';')[0]
-
-          filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{file_extension}"
+          filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}"
           folder_name = f"{account}_{posts_likes_feeds}"
           filepath = os.path.join(folder_name, filename)
+
           if not os.path.exists(folder_name):
             os.makedirs(folder_name)
-          if not os.path.exists(filepath):
-            tasks.append(download_media(session, img_url, filepath, filename))
-            sys.stdout.write(f"\r{' ' * 80}\rScheduled {filename} | {dowloaded_media}/{total_media}")
-            sys.stdout.flush()
-          else:
-            sys.stdout.write(f"\r{' ' * 80}\r{filename} already exists, skipping download")
-            sys.stdout.flush()
-            dowloaded_media += 1
+          
+          tasks.append(download_media(session, img_url, filepath))
+          sys.stdout.write(f"\r{' ' * 80}\rScheduled {filename} | {dowloaded_media}/{total_media}")
+          sys.stdout.flush()
       elif hasattr(_post.embed, 'playlist') and _post.embed.playlist:
         total_media += 1
         video_url = _post.embed.playlist
-        filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}.m3u8"
+        filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}"
         folder_name = f"{account}_{posts_likes_feeds}"
         filepath = os.path.join(folder_name, filename)
+
         if not os.path.exists(folder_name):
           os.makedirs(folder_name)
-        if not os.path.exists(filepath):
-          tasks.append(download_media(session, video_url, filepath, filename))
-          sys.stdout.write(f"\r{' ' * 80}\rScheduled {filename} | {dowloaded_media}/{total_media}")
-          sys.stdout.flush()
-        else:
-          sys.stdout.write(f"\r{' ' * 80}\r{filename} already exists, skipping download")
-          sys.stdout.flush()
-          dowloaded_media += 1
+          
+        tasks.append(download_media(session, video_url, filepath))
+        sys.stdout.write(f"\r{' ' * 80}\rScheduled {filename} | {dowloaded_media}/{total_media}")
+        sys.stdout.flush()
 
     print()
     results = await asyncio.gather(*tasks)
@@ -155,7 +139,7 @@ async def dowload_media(posts):
   
   return dowloaded_media, new_media, total_media
 
-async def download_media(session, url, filepath, filename):
+async def download_media(session, url, filepath):
   """
   Downloads an image from the given URL and saves it to the specified filepath.
 
@@ -164,18 +148,28 @@ async def download_media(session, url, filepath, filename):
     url (str): The URL of the image to download.
     filepath (str): The path where the image should be saved.
   """
+
   async with session.get(url) as response:
+    if response.status != 200:
+      return None
+
+    content_type = response.headers.get("Content-Type", "")
+    if "image/" in content_type:
+      extension = content_type.split("/")[-1].split(";")[0]
+      filepath = f"{filepath}.{extension}"
+    elif "application/vnd.apple.mpegurl" in content_type or url.endswith(".m3u8"):
+      filepath = f"{filepath}.m3u8"
+    else:
+      return 1
+
+    data = await response.read()
     with open(filepath, 'wb') as f:
-      if response.status != 200:
-        print(f"Failed to download {url}: {response.status}")
-        return None
-      content = await response.read()
-      f.write(content)
-      downloaded_m3u8.append(f"{filepath};{url.replace('playlist.m3u8', '')}") if url.endswith(".m3u8") else None
-      # Clear the terminal line
-      sys.stdout.write(f"\r{' ' * 80}\rDownloaded {filename}...")
-      sys.stdout.flush()
-      return 0
+      f.write(data)
+    
+    downloaded_m3u8.append(f"{filepath};{url.replace('playlist.m3u8', '')}") if url.endswith(".m3u8") else None
+    sys.stdout.write(f"\r{' ' * 80}\rDownloaded {filepath}...")
+    sys.stdout.flush()
+    return 0
 
 def main():
   global account, max_posts, posts_likes_feeds, user_did, user_feed
