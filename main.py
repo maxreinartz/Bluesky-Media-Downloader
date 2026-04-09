@@ -7,7 +7,7 @@ from atproto_identity.resolver import IdResolver
 
 load_dotenv()
 
-version = "1.6"
+version = "1.7"
 account = ""
 user_did = ""
 user_feed = ""
@@ -93,9 +93,9 @@ async def dowload_media(posts):
     dowloaded_media = 0
 
     # * DEBUG - Write posts to file
-    #with open("posts.txt", "w", encoding="utf-8") as f:
-    #  for post in posts:
-    #    f.write(f"{post}\n")
+    # with open("posts.txt", "w", encoding="utf-8") as f:
+    #   for post in posts:
+    #     f.write(f"{post}\n")
 
     for post in posts:
       # Check if the post has an embed with images or video
@@ -104,7 +104,19 @@ async def dowload_media(posts):
         for view_image in _post.embed.images:
           total_media += 1
           img_url = view_image.fullsize
-          filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{img_url.split('@')[-1]}"
+
+          # Fetch image from url and check for content type to determine file extension
+          async with session.get(img_url) as response:
+            if response.status != 200:
+              print(f"Failed to fetch {img_url}: {response.status}")
+              continue
+            content_type = response.headers.get('Content-Type', '')
+            if 'image' not in content_type:
+              print(f"URL {img_url} does not point to an image, skipping.")
+              continue
+            file_extension = content_type.split('/')[-1].split(';')[0]
+
+          filename = f"{_post.record.created_at.replace(':', '-')}_{_post.uri.split('/')[-1]}_{img_url.split('@')[0][-5:]}.{file_extension}"
           folder_name = f"{account}_{posts_likes_feeds}"
           filepath = os.path.join(folder_name, filename)
           if not os.path.exists(folder_name):
@@ -275,12 +287,12 @@ if __name__ == '__main__':
   # Get arguments from command line
   if len(sys.argv) <= 3:
     print("Not enough arguments.")
-    print("Usage: python main.py <account> [max_posts] [posts_likes_feeds]")
+    print("Usage: python main.py <account/hashtag> [max_posts] [posts|likes|feeds|hashtag]")
     sys.exit(1)
 
   if len(sys.argv) > 4:
     print("Too many arguments.")
-    print("Usage: python main.py <account> [max_posts] [posts_likes_feeds]")
+    print("Usage: python main.py <account/hashtag> [max_posts] [posts|likes|feeds|hashtag]")
     sys.exit(1)
 
   account = sys.argv[1]
@@ -291,14 +303,14 @@ if __name__ == '__main__':
       max_posts = -1
     else:
       print("Max posts must be a positive number or 'all'.")
-      print("Usage: python main.py <account | [hashtag]> [max_posts]")
+      print("Usage: python main.py <account/hashtag> [max_posts] [posts|likes|feeds|hashtag]")
       sys.exit(1)
 
   if(len(sys.argv) > 3):
     posts_likes_feeds = sys.argv[3].lower()
     if posts_likes_feeds not in ["likes", "posts", "feeds", "hashtag"]:
       print("Feed type must be either 'likes', 'posts', 'feeds', or 'hastag'.")
-      print("Usage: python main.py <account | [hashtag]> [max_posts] [posts_likes_feeds]")
+      print("Usage: python main.py <account/hashtag> [max_posts] [posts|likes|feeds|hashtag]")
       sys.exit(1)
 
   main();
